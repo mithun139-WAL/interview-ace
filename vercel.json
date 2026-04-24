@@ -1,5 +1,10 @@
 {
   "version": 2,
+  "functions": {
+    "server/index.ts": {
+      "maxDuration": 60
+    }
+  },
   "builds": [
     {
       "src": "server/index.ts",
