@@ -18,14 +18,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '21'
           cache: 'npm'
 
       - name: Install Dependencies
         run: npm install
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Generate Prisma Client
         run: npm run prisma:generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Build Project
         run: CI=false npm run build
