@@ -11,6 +11,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    environment: Production
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -39,6 +40,7 @@ jobs:
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
+    environment: Production
     if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     steps:
       - name: Checkout Code
