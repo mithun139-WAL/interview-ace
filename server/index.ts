@@ -7,7 +7,7 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { GoogleGenAI, Type } from "@google/genai";
 
-dotenv.config();
+dotenv.config({ path: '.env.local' });
 
 const prisma = new PrismaClient();
 const app = express();
