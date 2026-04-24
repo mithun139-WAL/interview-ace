@@ -25,3 +25,6 @@ dist-ssr
 
 /generated/prisma
 .vercel
+
+# Test coverage reports
+coverage/
