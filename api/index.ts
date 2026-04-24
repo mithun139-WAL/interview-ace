@@ -130,6 +130,39 @@ const cleanCode = (code: string) => {
   return code.replace(/```(javascript|python|java)\n|```/g, '').trim();
 };
 
+const isGeminiUnavailable = (error: unknown): boolean => {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('503') || msg.includes('unavailable')) return true;
+    try {
+      const parsed = JSON.parse(error.message);
+      return parsed?.error?.code === 503 || parsed?.error?.status === 'UNAVAILABLE';
+    } catch {
+      return false;
+    }
+  }
+  return false;
+};
+
+const withRetry = async <T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (isGeminiUnavailable(error) && attempt < maxAttempts - 1) {
+        const delayMs = Math.pow(2, attempt) * 1000;
+        console.warn(`Gemini unavailable (attempt ${attempt + 1}/${maxAttempts}), retrying in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+};
+
 // GET all questions
 app.get('/api/questions', async (req, res) => {
   try {
@@ -201,14 +234,14 @@ IMPORTANT for Mermaid:
 `;
 
   try {
-    const result = await ai.models.generateContent({
+    const result = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
       },
-    });
+    }));
 
     const rawText = result.text?.trim();
     if (!rawText) {
@@ -224,6 +257,12 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Generation Error:', error);
+    if (isGeminiUnavailable(error)) {
+      return res.status(503).json({
+        error: 'AI service temporarily unavailable',
+        details: 'The AI model is experiencing high demand. Please try again in a few moments.'
+      });
+    }
     res.status(500).json({
       error: 'AI generation failed',
       details: error instanceof Error ? error.message : 'Unknown AI error'
@@ -251,14 +290,14 @@ IMPORTANT for Mermaid:
 `;
 
   try {
-    const result = await ai.models.generateContent({
+    const result = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
       },
-    });
+    }));
 
     const rawText = result.text?.trim();
     if (!rawText) {
@@ -274,6 +313,12 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Refinement Error:', error);
+    if (isGeminiUnavailable(error)) {
+      return res.status(503).json({
+        error: 'AI service temporarily unavailable',
+        details: 'The AI model is experiencing high demand. Please try again in a few moments.'
+      });
+    }
     res.status(500).json({
       error: 'AI refinement failed',
       details: error instanceof Error ? error.message : 'Unknown AI error'
