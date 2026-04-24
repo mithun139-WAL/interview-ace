@@ -7,11 +7,13 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { GoogleGenAI, Type } from "@google/genai";
 
-dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 3001;
+
+export default app;
 
 app.use(cors());
 app.use(express.json());
@@ -264,6 +266,8 @@ IMPORTANT for Mermaid:
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+  app.listen(port, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}

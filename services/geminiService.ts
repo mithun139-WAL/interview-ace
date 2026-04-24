@@ -1,7 +1,7 @@
 
 import type { QuestionDetails } from '../types';
 
-const API_BASE_URL = 'http://localhost:3001/api/ai';
+const API_BASE_URL = '/api/ai';
 
 export const geminiService = {
   generateQuestionDetails: async (problemStatement: string): Promise<QuestionDetails> => {
