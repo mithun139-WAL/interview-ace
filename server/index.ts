@@ -13,6 +13,8 @@ const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 3001;
 
+export const maxDuration = 60;
+
 export default app;
 
 app.use(cors());
@@ -210,7 +212,10 @@ IMPORTANT for Mermaid:
       },
     });
 
-    const details = JSON.parse(result.text.trim());
+    const rawText = result.text.trim();
+    // Strip markdown formatting if Gemini includes it
+    const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    const details = JSON.parse(jsonText);
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
@@ -251,7 +256,10 @@ IMPORTANT for Mermaid:
       },
     });
 
-    const details = JSON.parse(result.text.trim());
+    const rawText = result.text.trim();
+    // Strip markdown formatting if Gemini includes it
+    const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    const details = JSON.parse(jsonText);
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
