@@ -13,8 +13,6 @@ const prisma = new PrismaClient();
 const app = express();
 const port = process.env.PORT || 3001;
 
-export const maxDuration = 60;
-
 export default app;
 
 app.use(cors());
@@ -212,7 +210,10 @@ IMPORTANT for Mermaid:
       },
     });
 
-    const rawText = result.text.trim();
+    const rawText = result.text?.trim();
+    if (!rawText) {
+      throw new Error('Empty or blocked response from AI');
+    }
     // Strip markdown formatting if Gemini includes it
     const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     const details = JSON.parse(jsonText);
@@ -222,8 +223,11 @@ IMPORTANT for Mermaid:
 
     res.json(details);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'AI generation failed' });
+    console.error('AI Generation Error:', error);
+    res.status(500).json({
+      error: 'AI generation failed',
+      details: error instanceof Error ? error.message : 'Unknown AI error'
+    });
   }
 });
 
@@ -256,7 +260,10 @@ IMPORTANT for Mermaid:
       },
     });
 
-    const rawText = result.text.trim();
+    const rawText = result.text?.trim();
+    if (!rawText) {
+      throw new Error('Empty or blocked response from AI');
+    }
     // Strip markdown formatting if Gemini includes it
     const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
     const details = JSON.parse(jsonText);
