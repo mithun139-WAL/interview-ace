@@ -1,0 +1,40 @@
+{
+  "name": "interview-ace",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^1.22.0",
+    "@prisma/client": "^6.19.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mermaid": "^11.14.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/mermaid": "^9.1.0",
+    "@types/node": "^22.19.17",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Interview ACE",
+  "description": "An AI-powered application to help users master Data Structures and Algorithms for technical interviews. It provides structured breakdowns of common problems, including approaches, code solutions, and follow-up questions.",
+  "requestFramePermissions": []
+}
