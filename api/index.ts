@@ -130,6 +130,20 @@ const cleanCode = (code: string) => {
   return code.replace(/```(javascript|python|java)\n|```/g, '').trim();
 };
 
+const isGeminiRateLimited = (error: unknown): boolean => {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota')) return true;
+    try {
+      const parsed = JSON.parse(error.message);
+      return parsed?.error?.code === 429 || parsed?.error?.status === 'RESOURCE_EXHAUSTED';
+    } catch {
+      return false;
+    }
+  }
+  return false;
+};
+
 const isGeminiUnavailable = (error: unknown): boolean => {
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();
@@ -235,7 +249,7 @@ IMPORTANT for Mermaid:
 
   try {
     const result = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-pro",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -261,6 +275,12 @@ IMPORTANT for Mermaid:
       return res.status(503).json({
         error: 'AI service temporarily unavailable',
         details: 'The AI model is experiencing high demand. Please try again in a few moments.'
+      });
+    }
+    if (isGeminiRateLimited(error)) {
+      return res.status(429).json({
+        error: 'AI service rate limited',
+        details: 'You have exceeded your Gemini API quota or rate limit. Please try again later.'
       });
     }
     res.status(500).json({
@@ -291,7 +311,7 @@ IMPORTANT for Mermaid:
 
   try {
     const result = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: "gemini-2.5-pro",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -317,6 +337,12 @@ IMPORTANT for Mermaid:
       return res.status(503).json({
         error: 'AI service temporarily unavailable',
         details: 'The AI model is experiencing high demand. Please try again in a few moments.'
+      });
+    }
+    if (isGeminiRateLimited(error)) {
+      return res.status(429).json({
+        error: 'AI service rate limited',
+        details: 'You have exceeded your Gemini API quota or rate limit. Please try again later.'
       });
     }
     res.status(500).json({

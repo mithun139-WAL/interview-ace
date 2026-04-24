@@ -12,6 +12,12 @@ const handleAiResponse = async (response: Response, defaultMessage: string): Pro
       error.status = 503;
       throw error;
     }
+    if (response.status === 429) {
+      const message = errorData.details || 'You have exceeded your Gemini API quota or rate limit. Please try again later.';
+      const error = new Error(message) as any;
+      error.status = 429;
+      throw error;
+    }
     const error = new Error(defaultMessage) as any;
     error.status = response.status;
     error.details = errorData.details;
