@@ -13,7 +13,7 @@ const handleAiResponse = async (response: Response, defaultMessage: string): Pro
       throw error;
     }
     if (response.status === 429) {
-      const message = errorData.details || 'You have exceeded your Gemini API quota or rate limit. Please try again later.';
+      const message = errorData.details || 'You have exceeded the AI API quota or rate limit. Please try again later.';
       const error = new Error(message) as any;
       error.status = 429;
       throw error;
@@ -26,7 +26,7 @@ const handleAiResponse = async (response: Response, defaultMessage: string): Pro
   return response.json();
 };
 
-export const geminiService = {
+export const aiService = {
   generateQuestionDetails: async (problemStatement: string): Promise<QuestionDetails> => {
     const response = await fetch(`${API_BASE_URL}/generate`, {
       method: 'POST',

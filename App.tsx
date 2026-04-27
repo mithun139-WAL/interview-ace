@@ -4,7 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { QuestionView } from './components/QuestionView';
 import { NewQuestionModal } from './components/NewQuestionModal';
 import { dbService } from './services/dbService';
-import { geminiService } from './services/geminiService';
+import { aiService } from './services/aiService';
 import type { Question, Difficulty, Company } from './types';
 import { MenuIcon } from './components/icons/MenuIcon';
 
@@ -38,7 +38,7 @@ const App: React.FC = () => {
       setIsLoading(true);
       setError(null);
       try {
-        const details = await geminiService.generateQuestionDetails(question.problemStatement);
+        const details = await aiService.generateQuestionDetails(question.problemStatement);
         // We don't save immediately now, we wait for user satisfaction
         setQuestions(prev => prev.map(q => q.id === id ? { ...q, tempDetails: details } : q));
       } catch (err: any) {
@@ -58,7 +58,7 @@ const App: React.FC = () => {
     setError(null);
     try {
       const currentDetails = question.tempDetails || question.details!;
-      const details = await geminiService.refineQuestionDetails(question.problemStatement, currentDetails, userPrompt);
+      const details = await aiService.refineQuestionDetails(question.problemStatement, currentDetails, userPrompt);
       setQuestions(prev => prev.map(q => q.id === id ? { ...q, tempDetails: details } : q));
     } catch (err: any) {
       const message = err.details ? `${err.message}: ${err.details}` : err.message;
@@ -88,7 +88,7 @@ const App: React.FC = () => {
     setError(null);
     try {
       // First generate initial answer
-      const details = await geminiService.generateQuestionDetails(problemStatement);
+      const details = await aiService.generateQuestionDetails(problemStatement);
       const newQuestion: Question = {
         id: new Date().getTime().toString(),
         title: details.problem.title,

@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
-import { GoogleGenAI, Type } from "@google/genai";
 
 dotenv.config({ path: '.env.local' });
 
@@ -18,202 +17,105 @@ export default app;
 app.use(cors());
 app.use(express.json());
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+const generateWithGroq = async (prompt: string, retries = 3): Promise<string> => {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
 
-const responseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    problem: {
-      type: Type.OBJECT,
-      properties: {
-        title: { type: Type.STRING },
-        statement: { type: Type.STRING },
-        inputOutput: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              input: { type: Type.STRING },
-              output: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-            },
-          },
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
         },
-      },
-    },
-    edgeCases: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING },
-    },
-    approaches: {
-      type: Type.OBJECT,
-      properties: {
-        bruteForce: {
-          type: Type.OBJECT,
-          properties: {
-            logic: { type: Type.STRING },
-            timeComplexity: {
-              type: Type.OBJECT,
-              properties: {
-                notation: { type: Type.STRING },
-                explanation: { type: Type.STRING }
-              },
-              required: ['notation', 'explanation']
-            },
-            spaceComplexity: {
-              type: Type.OBJECT,
-              properties: {
-                notation: { type: Type.STRING },
-                explanation: { type: Type.STRING }
-              },
-              required: ['notation', 'explanation']
-            },
-          },
-        },
-        patternIdentification: {
-          type: Type.STRING,
-        },
-        optimal: {
-          type: Type.OBJECT,
-          properties: {
-            logic: { type: Type.STRING },
-            timeComplexity: {
-              type: Type.OBJECT,
-              properties: {
-                notation: { type: Type.STRING },
-                explanation: { type: Type.STRING }
-              },
-              required: ['notation', 'explanation']
-            },
-            spaceComplexity: {
-              type: Type.OBJECT,
-              properties: {
-                notation: { type: Type.STRING },
-                explanation: { type: Type.STRING }
-              },
-              required: ['notation', 'explanation']
-            },
-          },
-        },
-      },
-    },
-    code: {
-      type: Type.OBJECT,
-      properties: {
-        javascript: { type: Type.STRING },
-        python: { type: Type.STRING },
-        java: { type: Type.STRING },
-      },
-    },
-    followUps: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          question: { type: Type.STRING },
-          answer: { type: Type.STRING },
-        },
-      },
-    },
-    diagram: {
-      type: Type.OBJECT,
-      properties: {
-        explanation: { type: Type.STRING },
-        mermaidCode: { type: Type.STRING },
-      },
-    },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert DSA instructor. You must always return responses in valid JSON format.
+Expected JSON structure:
+{
+  "problem": {
+    "title": "string",
+    "statement": "string",
+    "inputOutput": [{ "input": "string", "output": "string", "explanation": "string" }]
   },
+  "edgeCases": ["string"],
+  "approaches": {
+    "bruteForce": {
+      "logic": "string",
+      "timeComplexity": { "notation": "string", "explanation": "string" },
+      "spaceComplexity": { "notation": "string", "explanation": "string" }
+    },
+    "patternIdentification": "string",
+    "optimal": {
+      "logic": "string",
+      "timeComplexity": { "notation": "string", "explanation": "string" },
+      "spaceComplexity": { "notation": "string", "explanation": "string" }
+    }
+  },
+  "code": {
+    "javascript": "string",
+    "python": "string",
+    "java": "string"
+  },
+  "followUps": [{ "question": "string", "answer": "string" }],
+  "diagram": {
+    "explanation": "string",
+    "mermaidCode": "string"
+  }
+}`
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          model: 'openai/gpt-oss-120b',
+          temperature: 1,
+          max_completion_tokens: 3072, // Slightly reduced to help with TPM limits
+          top_p: 1,
+          stream: false,
+          reasoning_effort: "medium",
+          response_format: { type: "json_object" }
+        })
+      });
+
+      if (response.status === 429) {
+        const errorBody = await response.json().catch(() => ({}));
+        const retryAfter = parseFloat(errorBody.error?.message?.match(/try again in ([\d.]+)s/)?.[1] || '1');
+        console.warn(`Rate limited. Retrying in ${retryAfter}s... (Attempt ${i + 1}/${retries})`);
+        await new Promise(res => setTimeout(res, retryAfter * 1000 + 100)); // Buffer of 100ms
+        continue;
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(`Groq API Error (${response.status}): ${JSON.stringify(errorBody)}`);
+      }
+
+      const data = (await response.json()) as any;
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error('Empty response from Groq');
+      }
+
+      return content;
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      console.error(`Error on attempt ${i + 1}:`, error);
+      await new Promise(res => setTimeout(res, 1000 * (i + 1))); // Simple backoff
+    }
+  }
+  throw new Error('Max retries reached');
 };
+
 
 const cleanCode = (code: string) => {
   if (!code) return '';
   return code.replace(/```(javascript|python|java)\n|```/g, '').trim();
-};
-
-const isGeminiRateLimited = (error: unknown): boolean => {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (msg.includes('429') || msg.includes('resource_exhausted') || msg.includes('quota')) return true;
-    try {
-      const parsed = JSON.parse(error.message);
-      return parsed?.error?.code === 429 || parsed?.error?.status === 'RESOURCE_EXHAUSTED';
-    } catch {
-      return false;
-    }
-  }
-  return false;
-};
-
-const isGeminiUnavailable = (error: unknown): boolean => {
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (msg.includes('503') || msg.includes('unavailable')) return true;
-    try {
-      const parsed = JSON.parse(error.message);
-      return parsed?.error?.code === 503 || parsed?.error?.status === 'UNAVAILABLE';
-    } catch {
-      return false;
-    }
-  }
-  return false;
-};
-
-const isNetworkError = (error: unknown): boolean => {
-  if (error instanceof TypeError) {
-    const msg = error.message.toLowerCase();
-    if (msg.includes('fetch failed') || msg.includes('failed to fetch')) return true;
-  }
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    if (
-      msg.includes('econnreset') ||
-      msg.includes('enotfound') ||
-      msg.includes('econnrefused') ||
-      msg.includes('etimedout') ||
-      msg.includes('network') ||
-      msg.includes('fetch failed')
-    ) return true;
-  }
-  return false;
-};
-
-const MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash-lite"
-];
-const generateWithFallback = async (prompt: string, schema: any): Promise<string> => {
-  let lastError: unknown;
-
-  for (const model of MODELS) {
-    try {
-      console.log(`Trying model: ${model}`);
-
-      const result = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: schema,
-          maxOutputTokens: 65536,
-        },
-      });
-
-      return result.text || '';
-    } catch (error) {
-      lastError = error;
-
-      if (isGeminiRateLimited(error) || isGeminiUnavailable(error) || isNetworkError(error)) {
-        console.warn(`Model ${model} failed (${(error as Error).message}). Trying next model...`);
-        await new Promise(res => setTimeout(res, 2000)); // small backoff
-        continue;
-      }
-
-      throw error;
-    }
-  }
-
-  throw lastError;
 };
 
 // GET all questions
@@ -277,33 +179,37 @@ app.put('/api/questions/:id', async (req, res) => {
 app.post('/api/ai/generate', async (req, res) => {
   const { problemStatement } = req.body;
   const prompt = `
-You are an expert DSA instructor. Generate a comprehensive learning guide for: "${problemStatement}"
+You are an expert DSA instructor. Generate a detailed and comprehensive learning guide for: "${problemStatement}"
 Structure your response in valid JSON according to the schema.
 Ensure that the "code" fields contain well-formatted, multi-line code (use \\n for newlines).
 Ensure that the "mermaidCode" field contains valid Mermaid.js syntax (prefer flowchart TD).
-IMPORTANT for Mermaid:
-- Do NOT use special characters like (), [], {}, or <> inside node labels unless you wrap the label in double quotes, e.g., A["Label (info)"].
+IMPORTANT:
+- Provide a detailed, step-by-step logic explanation for both the Brute Force and Optimal approaches.
+- Generate at least 3 relevant follow-up questions with concise but informative answers.
+- For Mermaid, do NOT use special characters like (), [], {}, or <> inside node labels unless you wrap the label in double quotes, e.g., A["Label (info)"].
 - Ensure every connection or node definition is on a new line.
 `;
 
   try {
-    const rawText = (await generateWithFallback(prompt, responseSchema)).trim();
-    if (!rawText) {
+    const jsonText = (await generateWithGroq(prompt)).trim();
+    if (!jsonText) {
       throw new Error('Empty or blocked response from AI');
     }
-    // Strip markdown formatting if Gemini includes it
-    const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+
     let details: any;
     try {
       details = JSON.parse(jsonText);
     } catch (parseError) {
-      console.error('JSON parse failed (likely truncated response):', parseError);
+      console.error('JSON parse failed. Raw text:', jsonText);
       return res.status(500).json({
-        error: 'AI response was truncated',
-        details: 'The AI response was cut off before it could finish. Please try again.'
+        error: 'AI response was truncated or invalid',
+        details: 'The AI generated a malformed response. Please try again.'
       });
     }
-    if (!details.code) details.code = {};
+
+    if (typeof details.code !== 'object' || details.code === null) {
+      details.code = {};
+    }
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
@@ -311,24 +217,6 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Generation Error:', error);
-    if (isNetworkError(error)) {
-      return res.status(503).json({
-        error: 'Network error reaching AI service',
-        details: 'Could not connect to the Gemini API. Please check your internet connection and try again.'
-      });
-    }
-    if (isGeminiUnavailable(error)) {
-      return res.status(503).json({
-        error: 'AI service temporarily unavailable',
-        details: 'The AI model is experiencing high demand. Please try again in a few moments.'
-      });
-    }
-    if (isGeminiRateLimited(error)) {
-      return res.status(429).json({
-        error: 'AI service rate limited',
-        details: 'You have exceeded your Gemini API quota or rate limit. Please try again later.'
-      });
-    }
     res.status(500).json({
       error: 'AI generation failed',
       details: error instanceof Error ? error.message : 'Unknown AI error'
@@ -350,29 +238,33 @@ Please regenerate the answer incorporating this feedback.
 Maintain the same JSON structure.
 Ensure that the "code" fields contain well-formatted, multi-line code (use \\n for newlines).
 Ensure that the "mermaidCode" field contains valid Mermaid.js syntax (prefer flowchart TD).
-IMPORTANT for Mermaid:
-- Do NOT use special characters like (), [], {}, or <> inside node labels unless you wrap the label in double quotes, e.g., A["Label (info)"].
+IMPORTANT:
+- Ensure the explanations for Brute Force and Optimal approaches remain detailed and step-by-step.
+- Ensure there are at least 3 relevant follow-up questions.
+- For Mermaid, do NOT use special characters like (), [], {}, or <> inside node labels unless you wrap the label in double quotes, e.g., A["Label (info)"].
 - Ensure every connection or node definition is on a new line.
 `;
 
   try {
-    const rawText = (await generateWithFallback(prompt, responseSchema)).trim();
-    if (!rawText) {
+    const jsonText = (await generateWithGroq(prompt)).trim();
+    if (!jsonText) {
       throw new Error('Empty or blocked response from AI');
     }
-    // Strip markdown formatting if Gemini includes it
-    const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+
     let details: any;
     try {
       details = JSON.parse(jsonText);
     } catch (parseError) {
-      console.error('JSON parse failed (likely truncated response):', parseError);
+      console.error('JSON parse failed in Refine. Raw text:', jsonText);
       return res.status(500).json({
-        error: 'AI response was truncated',
-        details: 'The AI response was cut off before it could finish. Please try again.'
+        error: 'AI refinement was truncated or invalid',
+        details: 'The AI generated a malformed response during refinement.'
       });
     }
-    if (!details.code) details.code = {};
+
+    if (typeof details.code !== 'object' || details.code === null) {
+      details.code = {};
+    }
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
@@ -380,24 +272,6 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Refinement Error:', error);
-    if (isNetworkError(error)) {
-      return res.status(503).json({
-        error: 'Network error reaching AI service',
-        details: 'Could not connect to the Gemini API. Please check your internet connection and try again.'
-      });
-    }
-    if (isGeminiUnavailable(error)) {
-      return res.status(503).json({
-        error: 'AI service temporarily unavailable',
-        details: 'The AI model is experiencing high demand. Please try again in a few moments.'
-      });
-    }
-    if (isGeminiRateLimited(error)) {
-      return res.status(429).json({
-        error: 'AI service rate limited',
-        details: 'You have exceeded your Gemini API quota or rate limit. Please try again later.'
-      });
-    }
     res.status(500).json({
       error: 'AI refinement failed',
       details: error instanceof Error ? error.message : 'Unknown AI error'
