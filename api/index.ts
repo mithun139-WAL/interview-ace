@@ -158,22 +158,61 @@ const isGeminiUnavailable = (error: unknown): boolean => {
   return false;
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, maxAttempts = 4): Promise<T> => {
+const isNetworkError = (error: unknown): boolean => {
+  if (error instanceof TypeError) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('fetch failed') || msg.includes('failed to fetch')) return true;
+  }
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes('econnreset') ||
+      msg.includes('enotfound') ||
+      msg.includes('econnrefused') ||
+      msg.includes('etimedout') ||
+      msg.includes('network') ||
+      msg.includes('fetch failed')
+    ) return true;
+  }
+  return false;
+};
+
+const MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash-lite"
+];
+const generateWithFallback = async (prompt: string, schema: any): Promise<string> => {
   let lastError: unknown;
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+
+  for (const model of MODELS) {
     try {
-      return await fn();
+      console.log(`Trying model: ${model}`);
+
+      const result = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          maxOutputTokens: 65536,
+        },
+      });
+
+      return result.text || '';
     } catch (error) {
       lastError = error;
-      if (isGeminiUnavailable(error) && attempt < maxAttempts - 1) {
-        const delayMs = Math.pow(2, attempt) * 1000;
-        console.warn(`Gemini unavailable (attempt ${attempt + 1}/${maxAttempts}), retrying in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      } else {
-        throw error;
+
+      if (isGeminiRateLimited(error) || isGeminiUnavailable(error) || isNetworkError(error)) {
+        console.warn(`Model ${model} failed (${(error as Error).message}). Trying next model...`);
+        await new Promise(res => setTimeout(res, 2000)); // small backoff
+        continue;
       }
+
+      throw error;
     }
   }
+
   throw lastError;
 };
 
@@ -248,22 +287,23 @@ IMPORTANT for Mermaid:
 `;
 
   try {
-    const result = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      },
-    }));
-
-    const rawText = result.text?.trim();
+    const rawText = (await generateWithFallback(prompt, responseSchema)).trim();
     if (!rawText) {
       throw new Error('Empty or blocked response from AI');
     }
     // Strip markdown formatting if Gemini includes it
     const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    const details = JSON.parse(jsonText);
+    let details: any;
+    try {
+      details = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error('JSON parse failed (likely truncated response):', parseError);
+      return res.status(500).json({
+        error: 'AI response was truncated',
+        details: 'The AI response was cut off before it could finish. Please try again.'
+      });
+    }
+    if (!details.code) details.code = {};
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
@@ -271,6 +311,12 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Generation Error:', error);
+    if (isNetworkError(error)) {
+      return res.status(503).json({
+        error: 'Network error reaching AI service',
+        details: 'Could not connect to the Gemini API. Please check your internet connection and try again.'
+      });
+    }
     if (isGeminiUnavailable(error)) {
       return res.status(503).json({
         error: 'AI service temporarily unavailable',
@@ -310,22 +356,23 @@ IMPORTANT for Mermaid:
 `;
 
   try {
-    const result = await withRetry(() => ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: responseSchema,
-      },
-    }));
-
-    const rawText = result.text?.trim();
+    const rawText = (await generateWithFallback(prompt, responseSchema)).trim();
     if (!rawText) {
       throw new Error('Empty or blocked response from AI');
     }
     // Strip markdown formatting if Gemini includes it
     const jsonText = rawText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    const details = JSON.parse(jsonText);
+    let details: any;
+    try {
+      details = JSON.parse(jsonText);
+    } catch (parseError) {
+      console.error('JSON parse failed (likely truncated response):', parseError);
+      return res.status(500).json({
+        error: 'AI response was truncated',
+        details: 'The AI response was cut off before it could finish. Please try again.'
+      });
+    }
+    if (!details.code) details.code = {};
     details.code.javascript = cleanCode(details.code.javascript);
     details.code.python = cleanCode(details.code.python);
     details.code.java = cleanCode(details.code.java);
@@ -333,6 +380,12 @@ IMPORTANT for Mermaid:
     res.json(details);
   } catch (error) {
     console.error('AI Refinement Error:', error);
+    if (isNetworkError(error)) {
+      return res.status(503).json({
+        error: 'Network error reaching AI service',
+        details: 'Could not connect to the Gemini API. Please check your internet connection and try again.'
+      });
+    }
     if (isGeminiUnavailable(error)) {
       return res.status(503).json({
         error: 'AI service temporarily unavailable',
